@@ -1,0 +1,16 @@
+-name: install docker
+ hosts: ec2
+ tasks:
+   - name: install 
+     dnf:
+       name:
+         - amazon-linux-extras
+         - docker
+  - name: Enable the docker
+    systemd:
+      name: docker
+      enabled: yes
+      state: started
+  - name: container creation
+    shell:
+      cmd: docker build 

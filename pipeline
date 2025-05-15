@@ -1,0 +1,64 @@
+pipeline{
+    agent any
+    environment {
+        AWS_ACCOUNT_ID="890742580558"
+        AWS_DEFAULT_REGION="ap-southeast-1"
+        IMAGE_REPO_NAME="devops-repo"
+        IMAGE_TAG="v3"
+        REPOSITORY_URI = "890742580558.dkr.ecr.ap-southeast-1.amazonaws.com/devops-repo"
+        IMAGE_URI="${IMAGE_REPO_NAME}:${IMAGE_TAG}"
+    }
+    stages{
+        stage('git_connection'){
+            steps{
+                git url: 'https://<user>:<token>@github.com/amalspillai02/devops.git', branch: 'main'
+            }
+        }
+       stage('Terraform Init') {
+            steps {
+                    sh 'terraform init'
+                }
+            }
+            stage('Terraform Plan') {
+            steps {
+                    withCredentials([usernamePassword(credentialsId: 'aws-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+          sh """
+            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+            aws configure set default.region ${AWS_DEFAULT_REGION}
+            terraform plan
+          """
+        }
+                 }
+            }
+        stage("Terraform Apply"){
+            steps{
+                sh 'terraform apply -auto-approve'
+            }
+        }
+        stage('Build Docker Image') {
+      steps {
+        sh "docker build -t ${IMAGE_REPO_NAME}:${IMAGE_TAG} ."
+      }
+    }
+       stage('Login to ECR') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'aws-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+          sh """
+            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+            aws configure set default.region ${AWS_DEFAULT_REGION}
+            aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
+          """
+        }
+      }
+    }
+     stage('Push Docker Image') {
+      steps {
+        sh "docker tag ${IMAGE_REPO_NAME}:${IMAGE_TAG} ${REPOSITORY_URI}:${IMAGE_TAG}"
+         sh "docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${IMAGE_REPO_NAME}:${IMAGE_TAG}"
+
+      }
+    }
+    }
+}
